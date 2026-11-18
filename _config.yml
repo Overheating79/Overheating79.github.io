@@ -1,3 +1,20 @@
+<link rel="stylesheet" href="{{ '/assets/css/style.scss' | relative_url }}">
 theme: jekyll-theme-minimal
 title: Daniel's homepage
 description: Bookmark this to keep an eye on my project updates!
+---
+---
+
+@import "{{ site.theme }}";
+
+body {
+  color: #333333;
+}
+
+a {
+  color: #0066cc;
+}
+
+a:hover {
+  color: #004499;
+}
