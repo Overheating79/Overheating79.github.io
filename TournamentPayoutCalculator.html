@@ -1,0 +1,523 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Tournament Payout Calculator</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;700&display=swap">
+<style>
+/* Layout: setup panel on the left, live payout list on the right; stacks to one column on phones. */
+:root {
+  --bg: #f1f4f5;
+  --surface: #ffffff;
+  --fg: #13232b;
+  --muted: #566a74;
+  --line: #d3dce0;
+  --track: #e3e9ec;
+  --accent: #0f6b63;
+  --accent-fg: #ffffff;
+  --gold: #8a6212;
+  --warn: #8f3515;
+  --warn-bg: #fbece5;
+  --font-display: 'Space Grotesk', 'Segoe UI', system-ui, sans-serif;
+  --font-body: 'Inter', 'Segoe UI', system-ui, sans-serif;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0e1a1f;
+    --surface: #15252c;
+    --fg: #e5eef0;
+    --muted: #94a9b2;
+    --line: #293d46;
+    --track: #223640;
+    --accent: #4cc3b5;
+    --accent-fg: #06211e;
+    --gold: #e0b04a;
+    --warn: #f0a583;
+    --warn-bg: #3a2218;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #0e1a1f;
+  --surface: #15252c;
+  --fg: #e5eef0;
+  --muted: #94a9b2;
+  --line: #293d46;
+  --track: #223640;
+  --accent: #4cc3b5;
+  --accent-fg: #06211e;
+  --gold: #e0b04a;
+  --warn: #f0a583;
+  --warn-bg: #3a2218;
+  color-scheme: dark;
+}
+
+* { box-sizing: border-box; }
+body {
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-body);
+  font-size: 16px;
+  line-height: 1.5;
+  padding-block: 28px 40px;
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.wrap { max-width: 980px; margin: 0 auto; }
+h1 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.5rem, 4vw, 2rem);
+  letter-spacing: -0.01em;
+  line-height: 1.15;
+  margin: 0 0 6px;
+  text-wrap: balance;
+}
+.sub { color: var(--muted); margin: 0 0 24px; max-width: 60ch; }
+
+.grid { display: grid; gap: 20px; grid-template-columns: 1fr; align-items: start; }
+@media (min-width: 780px) { .grid { grid-template-columns: 320px minmax(0, 1fr); } }
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 0;
+}
+.panel h2 {
+  font-family: var(--font-display);
+  font-size: 0.8rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--muted);
+  margin: 0 0 16px;
+}
+
+.field { display: flex; flex-direction: column; gap: 6px; margin: 0 0 16px; border: 0; padding: 0; min-width: 0; }
+.field > label, .field > legend {
+  font-size: 0.875rem;
+  font-weight: 500;
+  padding: 0;
+}
+.hint { font-size: 0.8125rem; color: var(--muted); margin: 0; }
+.input-wrap { position: relative; }
+.input-wrap .prefix {
+  position: absolute; left: 12px; top: 50%; transform: translateY(-50%);
+  color: var(--muted); pointer-events: none;
+}
+input[type="number"] {
+  width: 100%;
+  height: 44px;
+  padding: 0 12px;
+  font: inherit;
+  font-variant-numeric: tabular-nums;
+  color: var(--fg);
+  background: var(--bg);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.input-wrap.money input { padding-left: 26px; }
+input[type="number"]:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.seg {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 1px;
+  background: var(--line);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.seg input { position: absolute; opacity: 0; pointer-events: none; }
+.seg label {
+  text-align: center;
+  padding: 10px 8px;
+  font-size: 0.9rem;
+  background: var(--surface);
+  cursor: pointer;
+}
+.seg input:checked + label { background: var(--accent); color: var(--accent-fg); font-weight: 600; }
+.seg input:focus-visible + label { outline: 2px solid var(--fg); outline-offset: -3px; }
+
+.summary { display: flex; flex-wrap: wrap; gap: 20px 40px; margin-bottom: 8px; }
+.stat .label {
+  font-size: 0.75rem; font-weight: 600; text-transform: uppercase;
+  letter-spacing: 0.08em; color: var(--muted); margin: 0 0 2px;
+}
+.stat .value {
+  font-family: var(--font-display); font-weight: 700;
+  font-variant-numeric: tabular-nums; line-height: 1.1; margin: 0;
+}
+.stat.pool .value { font-size: clamp(2rem, 7vw, 2.75rem); color: var(--accent); }
+.stat.places .value { font-size: clamp(1.5rem, 5vw, 2rem); }
+.stat .sub-line { font-size: 0.875rem; color: var(--muted); margin: 4px 0 0; }
+
+.notes { font-size: 0.875rem; color: var(--muted); margin: 12px 0 0; }
+.notes p { margin: 0 0 4px; }
+
+.rows { list-style: none; margin: 20px 0 0; padding: 0; }
+.row {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 0;
+  border-top: 1px solid var(--line);
+}
+.place { font-family: var(--font-display); font-weight: 700; font-size: 1.05rem; }
+.row:first-child .place { color: var(--gold); }
+.share { font-size: 0.8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.pctwrap { display: flex; align-items: center; gap: 6px; font-size: 0.875rem; color: var(--muted); }
+.pctwrap input[type="number"] { width: 5.5rem; height: 36px; padding: 0 8px; }
+.track { height: 6px; background: var(--track); border-radius: 3px; overflow: hidden; margin-top: 6px; }
+.bar { height: 100%; background: var(--accent); border-radius: 3px; width: 0; }
+.amt {
+  font-weight: 600; font-size: 1.05rem; text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.total {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding-top: 14px; border-top: 2px solid var(--fg);
+  font-weight: 600;
+}
+.total .amt { font-family: var(--font-display); font-size: 1.2rem; }
+.check { margin: 12px 0 0; font-size: 0.875rem; color: var(--muted); }
+.check.warn {
+  color: var(--warn); background: var(--warn-bg);
+  padding: 10px 12px; border-radius: 8px;
+}
+
+.actions { margin-top: 20px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+button {
+  font: inherit; font-weight: 600; font-size: 0.9rem;
+  color: var(--fg); background: var(--surface);
+  border: 1px solid var(--line); border-radius: 8px;
+  padding: 10px 16px; cursor: pointer;
+}
+button:hover { border-color: var(--accent); color: var(--accent); }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.copy-fallback {
+  width: 100%; min-height: 8rem; margin-top: 12px; padding: 10px;
+  font: inherit; font-size: 0.875rem; color: var(--fg);
+  background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+}
+
+.empty { padding: 24px 0; color: var(--muted); }
+.empty strong { display: block; color: var(--fg); font-family: var(--font-display); font-size: 1.1rem; margin-bottom: 4px; }
+
+.sr {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap;
+}
+@media (prefers-reduced-motion: no-preference) {
+  .bar { transition: width 0.2s ease; }
+}
+</style>
+
+<main class="wrap">
+  <h1>Tournament Payout Calculator</h1>
+  <p class="sub">Enter the field size and prize money, choose how many places get paid, and see what each finisher takes home.</p>
+
+  <div class="grid">
+    <section class="panel" aria-label="Tournament setup">
+      <h2>Setup</h2>
+
+      <div class="field">
+        <label for="players">Number of players</label>
+        <input id="players" type="number" inputmode="numeric" min="1" step="1" value="24">
+      </div>
+
+      <div class="field">
+        <label for="fee">Entry fee per player</label>
+        <div class="input-wrap money">
+          <span class="prefix" aria-hidden="true">$</span>
+          <input id="fee" type="number" inputmode="decimal" min="0" step="0.01" value="50">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="added">Added money</label>
+        <div class="input-wrap money">
+          <span class="prefix" aria-hidden="true">$</span>
+          <input id="added" type="number" inputmode="decimal" min="0" step="0.01" value="200">
+        </div>
+        <p class="hint">Extra money put into the prize pool on top of entry fees.</p>
+      </div>
+
+      <div class="field">
+        <label for="paid">Places paid</label>
+        <input id="paid" type="number" inputmode="numeric" min="1" step="1" value="4">
+      </div>
+
+      <fieldset class="field">
+        <legend>Payout split</legend>
+        <div class="seg">
+          <input type="radio" name="split" id="split-top" value="top">
+          <label for="split-top">Top-heavy</label>
+          <input type="radio" name="split" id="split-balanced" value="balanced" checked>
+          <label for="split-balanced">Balanced</label>
+          <input type="radio" name="split" id="split-even" value="even">
+          <label for="split-even">Even</label>
+          <input type="radio" name="split" id="split-custom" value="custom">
+          <label for="split-custom">Custom</label>
+        </div>
+        <p class="hint" id="splitHint"></p>
+      </fieldset>
+
+      <fieldset class="field" style="margin-bottom:0">
+        <legend>Round payouts to</legend>
+        <div class="seg">
+          <input type="radio" name="round" id="round-dollars" value="dollars" checked>
+          <label for="round-dollars">Whole dollars</label>
+          <input type="radio" name="round" id="round-cents" value="cents">
+          <label for="round-cents">Cents</label>
+        </div>
+        <p class="hint">Any rounding difference goes to 1st place, so the total always matches the prize pool.</p>
+      </fieldset>
+    </section>
+
+    <section class="panel" aria-label="Payouts" aria-live="polite">
+      <h2>Payouts</h2>
+
+      <div class="empty" id="empty" hidden>
+        <strong>Nothing to pay out yet</strong>
+        <span id="emptyMsg"></span>
+      </div>
+
+      <div id="body">
+        <div class="summary">
+          <div class="stat pool">
+            <p class="label">Total prize pool</p>
+            <p class="value" id="poolValue"></p>
+            <p class="sub-line" id="poolMath"></p>
+          </div>
+          <div class="stat places">
+            <p class="label">Places paid</p>
+            <p class="value" id="placesValue"></p>
+            <p class="sub-line" id="placesSub"></p>
+          </div>
+        </div>
+
+        <div class="notes" id="notes"></div>
+
+        <ol class="rows" id="rows"></ol>
+
+        <div class="total">
+          <span>Total paid out</span>
+          <span class="amt" id="totalAmt"></span>
+        </div>
+        <p class="check" id="check"></p>
+
+        <div class="actions">
+          <button type="button" id="copyBtn">Copy results</button>
+        </div>
+        <textarea class="copy-fallback" id="copyFallback" readonly hidden aria-label="Results text to copy"></textarea>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script>
+(function () {
+  var ids = ['players','fee','added','paid','empty','emptyMsg','body','poolValue','poolMath',
+    'placesValue','placesSub','notes','rows','totalAmt','check','copyBtn','copyFallback','splitHint'];
+  var el = {};
+  ids.forEach(function (id) { el[id] = document.getElementById(id); });
+
+  var RATIO = { top: 0.5, balanced: 0.7, even: 1 };
+  var HINTS = {
+    top: 'Each place gets half of the place above it.',
+    balanced: 'Each place gets 70% of the place above it.',
+    even: 'Every paid place gets the same amount.',
+    custom: 'Type the percentage for each place in the payout list.'
+  };
+  var MAX_PLACES = 100;
+
+  var customPct = [];
+  var lastPreset = 'balanced';
+  var lastModel = null;
+
+  function num(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
+  function ord(n) {
+    var s = ['th', 'st', 'nd', 'rd'], v = n % 100;
+    return n + (s[(v - 20) % 10] || s[v] || s[0]);
+  }
+  function money(cents, showCents) {
+    var d = showCents ? 2 : 0;
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency', currency: 'USD', minimumFractionDigits: d, maximumFractionDigits: d
+    }).format(cents / 100);
+  }
+  function moneyAuto(dollars) {
+    var cents = Math.round(dollars * 100);
+    return money(cents, cents % 100 !== 0);
+  }
+  function round1(x) { return Math.round(x * 10) / 10; }
+
+  function presetPct(mode, n) {
+    var r = RATIO[mode], w = [], sum = 0, i;
+    for (i = 0; i < n; i++) { w.push(Math.pow(r, i)); sum += w[i]; }
+    return w.map(function (x) { return x / sum * 100; });
+  }
+  function seedCustom(mode, n) {
+    var p = presetPct(mode, n).map(round1);
+    var others = p.slice(1).reduce(function (a, b) { return a + b; }, 0);
+    p[0] = round1(100 - others);
+    return p;
+  }
+
+  function calcAmounts(poolCents, pct, roundDollars) {
+    var sumPct = pct.reduce(function (a, b) { return a + b; }, 0);
+    var amounts = pct.map(function (p) {
+      var raw = poolCents * p / 100;
+      return roundDollars ? Math.round(raw / 100) * 100 : Math.round(raw);
+    });
+    if (Math.abs(sumPct - 100) < 0.005) {
+      var others = amounts.slice(1).reduce(function (a, b) { return a + b; }, 0);
+      amounts[0] = poolCents - others;
+    }
+    return amounts;
+  }
+
+  function model() {
+    var players = Math.max(0, Math.floor(num(el.players.value)));
+    var fee = Math.max(0, num(el.fee.value));
+    var added = Math.max(0, num(el.added.value));
+    var paidReq = Math.max(0, Math.floor(num(el.paid.value)));
+    var mode = document.querySelector('input[name="split"]:checked').value;
+    var roundDollars = document.querySelector('input[name="round"]:checked').value === 'dollars';
+    if (mode !== 'custom') lastPreset = mode;
+
+    if (players < 1) return { empty: true, msg: 'Enter the number of players.' };
+    var poolCents = Math.round((players * fee + added) * 100);
+    if (poolCents <= 0) return { empty: true, msg: 'Enter an entry fee or added money to build the prize pool.' };
+    if (paidReq < 1) return { empty: true, msg: 'Choose how many places get paid.' };
+
+    var n = Math.min(paidReq, players, MAX_PLACES);
+    var notes = [];
+    if (paidReq > players) notes.push('The field has ' + players + (players === 1 ? ' player' : ' players') + ', so ' + n + (n === 1 ? ' place is' : ' places are') + ' paid.');
+    else if (paidReq > MAX_PLACES) notes.push('Payouts are limited to ' + MAX_PLACES + ' places.');
+
+    var pct;
+    if (mode === 'custom') {
+      if (customPct.length !== n) customPct = seedCustom(lastPreset, n);
+      pct = customPct.slice();
+    } else {
+      pct = presetPct(mode, n);
+    }
+    var amounts = calcAmounts(poolCents, pct, roundDollars);
+    var total = amounts.reduce(function (a, b) { return a + b; }, 0);
+    var showCents = amounts.some(function (a) { return a % 100 !== 0; });
+
+    return {
+      empty: false, players: players, fee: fee, added: added, mode: mode,
+      poolCents: poolCents, n: n, pct: pct, amounts: amounts, notes: notes,
+      total: total, unassigned: poolCents - total,
+      pctSum: pct.reduce(function (a, b) { return a + b; }, 0),
+      showCents: showCents
+    };
+  }
+
+  function poolMath(m) {
+    var s = m.players + (m.players === 1 ? ' player' : ' players') + ' × ' + moneyAuto(m.fee) + ' entry';
+    if (m.added > 0) s += ' + ' + moneyAuto(m.added) + ' added';
+    return s;
+  }
+
+  function buildRows(m) {
+    el.rows.innerHTML = m.pct.map(function (p, i) {
+      var mid = m.mode === 'custom'
+        ? '<div class="pctwrap"><label class="sr" for="pct-' + i + '">Percent for ' + ord(i + 1) + ' place</label>' +
+          '<input id="pct-' + i + '" class="pct" type="number" inputmode="decimal" min="0" max="100" step="0.1" value="' + customPct[i] + '"><span>%</span></div>'
+        : '<span class="share"></span>';
+      return '<li class="row" data-i="' + i + '"><span class="place">' + ord(i + 1) + '</span>' +
+        '<div class="mid">' + mid + '<div class="track"><div class="bar"></div></div></div>' +
+        '<span class="amt"></span></li>';
+    }).join('');
+  }
+
+  function paint(m, rebuild) {
+    lastModel = m;
+    el.splitHint.textContent = HINTS[document.querySelector('input[name="split"]:checked').value];
+    el.empty.hidden = !m.empty;
+    el.body.hidden = m.empty;
+    if (m.empty) { el.emptyMsg.textContent = m.msg; return; }
+
+    el.poolValue.textContent = money(m.poolCents, m.poolCents % 100 !== 0);
+    el.poolMath.textContent = poolMath(m);
+    el.placesValue.textContent = m.n + ' of ' + m.players;
+    el.placesSub.textContent = Math.round(m.n / m.players * 100) + '% of the field is paid';
+    el.notes.innerHTML = m.notes.map(function (t) { return '<p>' + t + '</p>'; }).join('');
+
+    if (rebuild) buildRows(m);
+    var maxPct = Math.max.apply(null, m.pct.concat([0.0001]));
+    var rows = el.rows.children;
+    for (var i = 0; i < rows.length; i++) {
+      rows[i].querySelector('.amt').textContent = money(m.amounts[i], m.showCents);
+      rows[i].querySelector('.bar').style.width = Math.min(100, m.pct[i] / maxPct * 100) + '%';
+      var share = rows[i].querySelector('.share');
+      if (share) share.textContent = m.pct[i].toFixed(1) + '% of the pool';
+    }
+
+    el.totalAmt.textContent = money(m.total, m.showCents || m.poolCents % 100 !== 0);
+    if (m.unassigned === 0) {
+      el.check.className = 'check';
+      el.check.textContent = 'Payouts add up to the full prize pool.';
+    } else {
+      el.check.className = 'check warn';
+      var amt = money(Math.abs(m.unassigned), true);
+      el.check.textContent = 'Percentages add up to ' + m.pctSum.toFixed(1) + '%. ' +
+        (m.unassigned > 0 ? amt + ' of the prize pool is unassigned.' : 'Payouts are ' + amt + ' over the prize pool.');
+    }
+  }
+
+  function render() { paint(model(), true); }
+
+  ['players', 'fee', 'added', 'paid'].forEach(function (id) {
+    el[id].addEventListener('input', render);
+  });
+  Array.prototype.forEach.call(document.querySelectorAll('input[type="radio"]'), function (r) {
+    r.addEventListener('change', render);
+  });
+  el.rows.addEventListener('input', function (e) {
+    if (!e.target.classList.contains('pct')) return;
+    var i = parseInt(e.target.closest('li').getAttribute('data-i'), 10);
+    customPct[i] = Math.max(0, num(e.target.value));
+    paint(model(), false);
+  });
+
+  function resultsText() {
+    var m = lastModel;
+    if (!m || m.empty) return '';
+    var lines = ['Prize pool: ' + money(m.poolCents, m.poolCents % 100 !== 0) + ' (' + poolMath(m) + ')'];
+    m.amounts.forEach(function (a, i) { lines.push(ord(i + 1) + ': ' + money(a, m.showCents)); });
+    return lines.join('\n');
+  }
+  el.copyBtn.addEventListener('click', function () {
+    var text = resultsText();
+    if (!text) return;
+    var done = function () {
+      el.copyBtn.textContent = 'Copied';
+      setTimeout(function () { el.copyBtn.textContent = 'Copy results'; }, 1500);
+    };
+    var fallback = function () {
+      el.copyFallback.hidden = false;
+      el.copyFallback.value = text;
+      el.copyFallback.focus();
+      el.copyFallback.select();
+    };
+    try {
+      navigator.clipboard.writeText(text).then(done, fallback);
+    } catch (err) { fallback(); }
+  });
+
+  render();
+})();
+</script>
+
+</body></html>
