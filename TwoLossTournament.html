@@ -145,11 +145,12 @@ td.rec, th.rec { white-space: nowrap; }
   var KEY = "twoLossTournament.v2";
   var SAMPLE = ["Marcus", "Dana", "Luis", "Priya", "Tom", "Keisha", "Ray", "Nadia", "Colt"];
   var state = load() || fresh();
+  if (!Array.isArray(state.playoffs)) state.playoffs = [];
   var resetArmed = false, resetTimer = null, addMessage = "";
   var backArmed = false, backTimer = null;
 
   function fresh() {
-    return { phase: "setup", sample: false, players: [], rounds: [] };
+    return { phase: "setup", sample: false, players: [], rounds: [], playoffs: [] };
   }
   function uid() { return Math.random().toString(36).slice(2, 9); }
   function load() {
@@ -215,8 +216,19 @@ td.rec, th.rec { white-space: nowrap; }
     return x.l >= 2 ? [1, -x.elim, -x.w] : [0, x.l, -x.w];
   }
   function cmp(a, b) { for (var i = 0; i < a.length; i++) if (a[i] !== b[i]) return a[i] - b[i]; return 0; }
+  /* Playoff wins only count between players who are level on everything else (so stale playoffs are ignored). */
+  function playoffWins(st) {
+    var bk = {}, pw = {};
+    state.players.forEach(function (p) { bk[p.id] = key(p, st); pw[p.id] = 0; });
+    state.playoffs.forEach(function (m) {
+      if (!m.w || !bk[m.a] || !bk[m.b] || cmp(bk[m.a], bk[m.b]) !== 0) return;
+      pw[m.w]++;
+    });
+    return pw;
+  }
   function standings(st) {
-    var rows = state.players.map(function (p) { return { p: p, k: key(p, st) }; });
+    var pw = playoffWins(st);
+    var rows = state.players.map(function (p) { return { p: p, k: key(p, st).concat(-pw[p.id]) }; });
     rows.sort(function (x, y) { return cmp(x.k, y.k) || x.p.name.localeCompare(y.p.name); });
     rows.forEach(function (r, i) {
       r.rank = i + 1;
@@ -224,6 +236,54 @@ td.rec, th.rec { white-space: nowrap; }
     });
     rows.forEach(function (r) { r.tied = rows.filter(function (o) { return o.rank === r.rank; }).length > 1; });
     return rows;
+  }
+
+  function tieGroups(rows) {
+    var groups = [];
+    rows.forEach(function (r) {
+      if (!r.tied) return;
+      var g = groups.filter(function (x) { return x.rank === r.rank; })[0];
+      if (!g) { g = { rank: r.rank, rows: [] }; groups.push(g); }
+      g.rows.push(r);
+    });
+    return groups;
+  }
+  function inGroup(g, id) { return g.rows.some(function (r) { return r.p.id === id; }); }
+  function isFinished(st) { var last = state.rounds[state.rounds.length - 1]; return !!last && aliveList(st).length === 1 && roundDone(last); }
+
+  /* Ties for 1st to 3rd must be settled by playoff matches; lower ties can optionally be broken the same way. */
+  function playoffPanel(st) {
+    var rows = standings(st), groups = tieGroups(rows);
+    var required = groups.filter(function (g) { return g.rank <= 3; });
+    var h = '<div class="panel"><div class="panel-head"><h2>Tiebreak playoffs</h2><span class="muted small">' +
+      (required.length ? "Needed to settle the podium" : "Podium places are settled") + "</span></div>";
+    if (required.length) h += '<div class="banner">Two players cannot share a podium place. Draw a playoff match for each tie below and mark the winner.</div>';
+    else h += '<p style="margin-bottom:12px"><strong>' + rows.slice(0, 3).map(function (r) { return ordinal(r.rank) + " " + esc(r.p.name); }).join(" &middot; ") + "</strong></p>";
+    groups.forEach(function (g) {
+      var req = g.rank <= 3;
+      var pending = state.playoffs.some(function (m) { return !m.w && inGroup(g, m.a) && inGroup(g, m.b); });
+      h += '<div class="bye" style="margin-top:0;margin-bottom:12px"><strong>Tied for ' + ordinal(g.rank) + (req ? "" : " (optional)") + ":</strong> " +
+        g.rows.map(function (r) { return esc(r.p.name); }).join(", ");
+      if (pending) h += ' <span class="muted small">&middot; mark the playoff winner below.</span>';
+      else h += '<div class="actions" style="margin-top:8px"><button type="button" class="' + (req ? "primary" : "ghost") + '" data-act="pdraw" data-rank="' + g.rank + '">' +
+        (g.rows.length === 2 ? "Draw playoff match" : "Draw playoff round robin") + "</button>" +
+        (req ? "" : '<span class="muted small">Not required. If you skip it, these players share the place.</span>') + "</div>";
+      h += "</div>";
+    });
+    if (state.playoffs.length) {
+      h += '<div class="matches">';
+      state.playoffs.forEach(function (m, i) {
+        h += '<div class="match"><div class="mlabel">Playoff match ' + (i + 1) + "</div>";
+        [m.a, m.b].forEach(function (id) {
+          var p = byId(id), won = m.w === id, lost = m.w && m.w !== id;
+          h += '<div class="side' + (won ? " won" : "") + (lost ? " lost" : "") + '"><div class="who"><span class="nm">' + esc(p.name) + "</span></div>" +
+            '<button type="button" data-act="pwin" data-i="' + i + '" data-p="' + id + '" aria-pressed="' + (won ? "true" : "false") + '">' + (won ? "Winner" : "Mark winner") + "</button></div>";
+        });
+        h += "</div>";
+      });
+      h += '</div><div class="actions"><button id="pclear" type="button" class="ghost">Clear all playoffs</button></div>';
+    }
+    return h + "</div>";
   }
 
   function nm(p, st) {
@@ -289,6 +349,7 @@ td.rec, th.rec { white-space: nowrap; }
       if (backArmed) backLabel = marked ? "Click again to discard round " + state.rounds.length : backLabel;
       h += '<button id="back" type="button" class="ghost' + (backArmed ? ' danger-armed' : '') + '">&larr; ' + backLabel + "</button>";
       h += "</div></div>";
+      if (champ) h += playoffPanel(st);
       var past = state.rounds.slice(0, -1);
       if (past.length) {
         h += '<div class="panel"><h3 style="margin-bottom:6px">Earlier rounds</h3>';
@@ -321,10 +382,11 @@ td.rec, th.rec { white-space: nowrap; }
       else if (x.l >= 2) status = "Out in round " + x.elim;
       else if (x.l === 1) status = "In, 1 loss";
       else status = any ? "In, no losses" : "In";
+      if (r.tied && r.rank <= 3 && isFinished(st)) status = "Tied, playoff needed";
       h += "<tr><td class=\"place\">" + (any ? (r.tied ? "T-" : "") + ordinal(r.rank) : "&ndash;") + "</td><td>" + nm(r.p, st).replace(/<span class="chip [^"]*">[^<]*<\/span>/, "") + '</td><td class="rec">' + x.w + "&ndash;" + x.l + "</td><td class=\"small muted\">" + status + "</td></tr>";
     });
     h += "</tbody></table></div>";
-    h += '<p class="muted small" style="margin-top:12px">A bye counts as a win. Players who go out in the same round are ranked by wins, and anyone still level shares a place.</p></div>';
+    h += '<p class="muted small" style="margin-top:12px">A bye counts as a win. Players who go out in the same round are ranked by wins, then by playoff results. Ties for the top three places must be settled with a playoff.</p></div>';
     $("standings").innerHTML = h;
   }
 
@@ -360,16 +422,30 @@ td.rec, th.rec { white-space: nowrap; }
     }
     if (act === "win") {
       var last = state.rounds[state.rounds.length - 1], m = last.matches[+t.getAttribute("data-m")], id = t.getAttribute("data-p");
-      m.w = m.w === id ? null : id; render(); return;
+      m.w = m.w === id ? null : id; state.playoffs = []; render(); return;
+    }
+    if (act === "pwin") {
+      var pm = state.playoffs[+t.getAttribute("data-i")], pid = t.getAttribute("data-p");
+      if (pm) { pm.w = pm.w === pid ? null : pid; render(); }
+      return;
+    }
+    if (act === "pdraw") {
+      var g = tieGroups(standings(compute())).filter(function (x) { return x.rank === +t.getAttribute("data-rank"); })[0];
+      if (g) {
+        var ids = shuffle(g.rows.map(function (r) { return r.p.id; }));
+        for (var a = 0; a < ids.length; a++) for (var b = a + 1; b < ids.length; b++) state.playoffs.push({ a: ids[a], b: ids[b], w: null });
+      }
+      render(); return;
     }
     switch (t.id) {
       case "bulk-add": addNames($("bulk").value.split(/\r?\n/)); render(); break;
       case "clear-all": state.players = []; state.sample = false; addMessage = ""; render(); break;
       case "start":
         if (state.players.length < 2) return;
-        state.phase = "running"; state.rounds = []; drawRound(); render(); break;
+        state.phase = "running"; state.rounds = []; state.playoffs = []; drawRound(); render(); break;
       case "next": drawRound(); render(); break;
       case "redraw": state.rounds.pop(); drawRound(); render(); break;
+      case "pclear": state.playoffs = []; render(); break;
       case "back":
         var cur = state.rounds[state.rounds.length - 1];
         var hasMarks = cur && cur.matches.some(function (m) { return m.w; });
@@ -380,7 +456,7 @@ td.rec, th.rec { white-space: nowrap; }
           break;
         }
         backArmed = false; clearTimeout(backTimer);
-        state.rounds.pop();
+        state.rounds.pop(); state.playoffs = [];
         if (!state.rounds.length) state.phase = "setup";
         render(); break;
       case "reset":
@@ -389,7 +465,7 @@ td.rec, th.rec { white-space: nowrap; }
           clearTimeout(resetTimer);
           resetTimer = setTimeout(disarm, 4000);
         } else {
-          disarm(); state = { phase: "setup", sample: false, players: [], rounds: [] }; addMessage = ""; render();
+          disarm(); state = { phase: "setup", sample: false, players: [], rounds: [], playoffs: [] }; addMessage = ""; render();
         }
         break;
     }
