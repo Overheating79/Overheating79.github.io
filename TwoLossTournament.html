@@ -142,13 +142,14 @@ td.rec, th.rec { white-space: nowrap; }
 
 <script>
 (function () {
-  var KEY = "twoLossTournament.v1";
+  var KEY = "twoLossTournament.v2";
   var SAMPLE = ["Marcus", "Dana", "Luis", "Priya", "Tom", "Keisha", "Ray", "Nadia", "Colt"];
   var state = load() || fresh();
   var resetArmed = false, resetTimer = null, addMessage = "";
+  var backArmed = false, backTimer = null;
 
   function fresh() {
-    return { phase: "setup", sample: true, players: SAMPLE.map(function (n) { return { id: uid(), name: n }; }), rounds: [] };
+    return { phase: "setup", sample: false, players: [], rounds: [] };
   }
   function uid() { return Math.random().toString(36).slice(2, 9); }
   function load() {
@@ -190,12 +191,20 @@ td.rec, th.rec { white-space: nowrap; }
 
   function drawRound() {
     var st = compute(), alive = aliveList(st), bye = null;
+    var prev = state.rounds[state.rounds.length - 1];
+    var prevBye = null;
+    if (prev && prev.bye && alive.some(function (p) { return p.id === prev.bye; })) prevBye = prev.bye;
     if (alive.length % 2 === 1) {
-      var least = Math.min.apply(null, alive.map(function (p) { return st[p.id].b; }));
-      var pool = alive.filter(function (p) { return st[p.id].b === least; });
+      /* Never give the same player back-to-back byes (unless they are the only one who could take it). */
+      var cands = alive.filter(function (p) { return p.id !== prevBye; });
+      if (!cands.length) cands = alive;
+      var least = Math.min.apply(null, cands.map(function (p) { return st[p.id].b; }));
+      var pool = cands.filter(function (p) { return st[p.id].b === least; });
       bye = pool[randInt(pool.length)].id;
     }
-    var field = shuffle(alive.filter(function (p) { return p.id !== bye; }));
+    var rest = alive.filter(function (p) { return p.id !== bye; });
+    var forced = prevBye && prevBye !== bye ? rest.filter(function (p) { return p.id === prevBye; }) : [];
+    var field = forced.concat(shuffle(rest.filter(function (p) { return p.id !== prevBye || !forced.length; })));
     var matches = [];
     for (var i = 0; i + 1 < field.length; i += 2) matches.push({ a: field[i].id, b: field[i + 1].id, w: null });
     state.rounds.push({ matches: matches, bye: bye });
@@ -260,7 +269,7 @@ td.rec, th.rec { white-space: nowrap; }
       h += '<div class="panel"><div class="panel-head"><h2>Round ' + state.rounds.length + '</h2><span class="muted small">' + marked + " of " + last.matches.length + " results in &middot; " + alive.length + " still in</span></div>";
       h += '<div class="matches">';
       last.matches.forEach(function (m, i) {
-        h += '<div class="match"><div class="mlabel">Match ' + (i + 1) + "</div>";
+        h += '<div class="match"><div class="mlabel">Match ' + (i + 1) + ((i === 0 && state.rounds.length > 1 && state.rounds[state.rounds.length - 2].bye && state.rounds[state.rounds.length - 2].bye === m.a) ? " &middot; had a bye last round" : "") + "</div>";
         [m.a, m.b].forEach(function (id) {
           var p = byId(id), won = m.w === id, lost = m.w && m.w !== id;
           h += '<div class="side' + (won ? " won" : "") + (lost ? " lost" : "") + '"><div class="who">' + nm(p, st) + (lost ? '<span class="chip out" style="margin-left:8px">Loss</span>' : "") + "</div>" +
@@ -276,6 +285,9 @@ td.rec, th.rec { white-space: nowrap; }
         if (!done) h += '<span class="muted small">Mark every winner to continue.</span>';
         if (marked === 0) h += '<button id="redraw" type="button" class="ghost">Reshuffle this round</button>';
       }
+      var backLabel = state.rounds.length > 1 ? "Go back to round " + (state.rounds.length - 1) : "Back to player setup";
+      if (backArmed) backLabel = marked ? "Click again to discard round " + state.rounds.length : backLabel;
+      h += '<button id="back" type="button" class="ghost' + (backArmed ? ' danger-armed' : '') + '">&larr; ' + backLabel + "</button>";
       h += "</div></div>";
       var past = state.rounds.slice(0, -1);
       if (past.length) {
@@ -358,6 +370,19 @@ td.rec, th.rec { white-space: nowrap; }
         state.phase = "running"; state.rounds = []; drawRound(); render(); break;
       case "next": drawRound(); render(); break;
       case "redraw": state.rounds.pop(); drawRound(); render(); break;
+      case "back":
+        var cur = state.rounds[state.rounds.length - 1];
+        var hasMarks = cur && cur.matches.some(function (m) { return m.w; });
+        if (hasMarks && !backArmed) {
+          backArmed = true; render();
+          clearTimeout(backTimer);
+          backTimer = setTimeout(function () { backArmed = false; render(); }, 4000);
+          break;
+        }
+        backArmed = false; clearTimeout(backTimer);
+        state.rounds.pop();
+        if (!state.rounds.length) state.phase = "setup";
+        render(); break;
       case "reset":
         if (!resetArmed) {
           resetArmed = true; t.textContent = "Click again to erase everything"; t.className = "danger-armed";
