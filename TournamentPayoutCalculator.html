@@ -229,14 +229,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
       <div class="field">
         <label for="players">Number of players</label>
-        <input id="players" type="number" inputmode="numeric" min="1" step="1" value="24">
+        <input id="players" type="number" inputmode="numeric" min="1" step="1" placeholder="0">
       </div>
 
       <div class="field">
         <label for="fee">Entry fee per player</label>
         <div class="input-wrap money">
           <span class="prefix" aria-hidden="true">$</span>
-          <input id="fee" type="number" inputmode="decimal" min="0" step="0.01" value="50">
+          <input id="fee" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0">
         </div>
       </div>
 
@@ -244,14 +244,14 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         <label for="added">Added money</label>
         <div class="input-wrap money">
           <span class="prefix" aria-hidden="true">$</span>
-          <input id="added" type="number" inputmode="decimal" min="0" step="0.01" value="200">
+          <input id="added" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0">
         </div>
         <p class="hint">Extra money put into the prize pool on top of entry fees.</p>
       </div>
 
       <div class="field">
         <label for="paid">Places paid</label>
-        <input id="paid" type="number" inputmode="numeric" min="1" step="1" value="4">
+        <input id="paid" type="number" inputmode="numeric" min="1" step="1" value="3">
       </div>
 
       <fieldset class="field">
@@ -259,11 +259,11 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
         <div class="seg">
           <input type="radio" name="split" id="split-top" value="top">
           <label for="split-top">Top-heavy</label>
-          <input type="radio" name="split" id="split-balanced" value="balanced" checked>
+          <input type="radio" name="split" id="split-balanced" value="balanced">
           <label for="split-balanced">Balanced</label>
           <input type="radio" name="split" id="split-even" value="even">
           <label for="split-even">Even</label>
-          <input type="radio" name="split" id="split-custom" value="custom">
+          <input type="radio" name="split" id="split-custom" value="custom" checked>
           <label for="split-custom">Custom</label>
         </div>
         <p class="hint" id="splitHint"></p>
@@ -334,12 +334,12 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     top: 'Each place gets half of the place above it.',
     balanced: 'Each place gets 70% of the place above it.',
     even: 'Every paid place gets the same amount.',
-    custom: 'Type the percentage for each place in the payout list.'
+    custom: 'Starts at 50% / 30% / 20% for three places. Type a different percentage for any place in the payout list.'
   };
   var MAX_PLACES = 100;
 
-  var customPct = [];
-  var lastPreset = 'balanced';
+  var customPct = [50, 30, 20];
+  var lastPreset = 'standard';
   var lastModel = null;
 
   function num(v) { var x = parseFloat(v); return isFinite(x) ? x : 0; }
@@ -365,6 +365,9 @@ button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
     return w.map(function (x) { return x / sum * 100; });
   }
   function seedCustom(mode, n) {
+    /* Default payout for three places is 50% / 30% / 20%; other sizes fall back to the balanced curve. */
+    if (mode === 'standard' && n === 3) return [50, 30, 20];
+    if (mode === 'standard') mode = 'balanced';
     var p = presetPct(mode, n).map(round1);
     var others = p.slice(1).reduce(function (a, b) { return a + b; }, 0);
     p[0] = round1(100 - others);
